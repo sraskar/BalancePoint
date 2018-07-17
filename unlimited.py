@@ -19,7 +19,6 @@ class B(object):
 
     @lazy_property
     def adjacency_bottomup(self):
-        from collections import defaultdict
         d = defaultdict(list)
         for k,lv in self.adjacency_topdown.items():
             for v in lv:
