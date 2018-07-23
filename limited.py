@@ -10,7 +10,6 @@ Edge = Tuple[Node,Node]
 
 import numpy as np
 
-
 def lazy_property(f):
     return property(lru_cache()(f))
 
@@ -21,43 +20,64 @@ def pairwise(iterable):
     next(b, None)
     return zip(a, b)
 
-class B(object):
+class Swing(object):
+    '''
+    This object takes as input a weighted acyclic graph and maximizes the pipelining capabilities of the graph.
+
+    Two menber may be useufull:
+        1- opt_edge_buffer -> Optimal buffering need to balence the graph
+        2- constrained_edge_buffer(max_b) -> Optimal constrain balenced graph
+
+    For (1) we use Gao algorithm based on a Linear Programming formulation
+    (2) use a minmax formulation where we minimize the maximum difference between each path and the critical path subject to a limited number of buffers.
+    In order to reduce the number of parameters, we optimize only the edge created by (1).
+
+    Dependency:
+
+    (1):cvxopt and glpk (conda install cxopt)
+    (2): Nomad (https://www.gerad.ca/nomad/) and PyNomad (see Nomad user guide on how to install)
+    '''
+    
     def __init__(self, weigh):
-        self.weigh = weigh # Top-> bottom by default. Only once
+        self.weigh = weigh # Top-> bottom by default.
 
     @lazy_property
-    def adjacency_topdown(self) -> Dict[Node, List[Node] ]:
+    def adjacency_list_topdown(self) -> Dict[Node, List[Node] ]:
+        '''
+        '''
         d = defaultdict(list)
         for i,o in self.weigh:
             d[i].append(o)
         return d
 
     @lazy_property
-    def adjacency_bottomup(self) -> Dict[Node, List[Node] ] :
+    def adjacency_list_bottomup(self) -> Dict[Node, List[Node] ] :
         d = defaultdict(list)
-        for k,lv in self.adjacency_topdown.items():
+        for k,lv in self.adjacency_list_topdown.items():
             for v in lv:
                 d[v].append(k)
         return d
 
     @lazy_property
     def l_node(self) -> Set[Node]:
-        return self.adjacency_topdown.keys() |  self.adjacency_bottomup.keys()
+        return self.adjacency_list_topdown.keys() |  self.adjacency_list_bottomup.keys()
 
     @lazy_property
     def order(self) -> Dict[Node,int]:
+        '''Arbitrary labeling for the node'''
         return {k:i for i,k in enumerate(self.l_node)}
 
     @lazy_property
     def leaf(self) -> Node:
         '''Assume only one leaf for now'''
-        return (self.l_node - self.adjacency_topdown.keys()).pop()
+        return (self.l_node - self.adjacency_list_topdown.keys()).pop()
 
 
     @lazy_property
     def delta_degree(self) -> Dict[Node, int]:
-        in_ =  self.adjacency_topdown
-        out_ = self.adjacency_bottomup
+        '''indegree(i) - outdegree(i) for each node. '''
+        in_ =  self.adjacency_list_topdown
+        out_ = self.adjacency_list_bottomup
         return { n:(len(in_[n]) - len(out_[n])) for n in self.l_node}
 
 
@@ -65,7 +85,7 @@ class B(object):
     def path_node(self, cur) -> List[Node]:
         '''Compute all the node form cur to the root of the DAG.
             Assume a unique root'''
-        d =  self.adjacency_bottomup
+        d =  self.adjacency_list_bottomup
 
         if d[cur]:
             it =  chain.from_iterable(self.path_node(p) for p in d[cur])
@@ -128,9 +148,7 @@ class B(object):
     @lazy_property
     def lp_constrain_vector(self):
         b = np.array([-k for k in self.weigh.values()],dtype=float)
-    
-        # Expend with posotif contrains
-        b_pos = np.zeros(len(self.l_node))
+        b_pos = np.zeros(len(self.l_node)) # Positif contrain
         return np.concatenate( (b,b_pos) )
 
     @lazy_property
@@ -140,8 +158,8 @@ class B(object):
     
     @lazy_property
     def lp_firing_buffered(self):
-        '''This function use GAO algorithm. It will generated the optimal buffer 
-           need to minimze the graph
+        '''GAO algorithm, using Liner Programming formulation
+           Compute the optimal buffers need to balance the graph
         '''
         
         from cvxopt import matrix, solvers
@@ -154,11 +172,11 @@ class B(object):
         sol=solvers.lp(c,A,b, solver='glpk')
 
         sol['x_int'] = [int(round(i)) for i in sol['x'] ]
-        assert all(i == f for i,f in zip(sol['x_int'],sol['x']))
+        assert all(i == f for i,f in zip(sol['x_int'],sol['x'])) # All the value are integer
         return dict(zip(self.order,sol['x_int'])) # Assume ordered dict
 
     @lazy_property
-    def opt_adjacency_buffer(self) -> Dict[Tuple[str,str],int]:
+    def opt_edge_buffer(self) -> Dict[Tuple[str,str],int]:
         b = self.lp_firing_buffered
         w = self.weigh
         return { (i,o): (b[o] - b[i]) - w for (i,o),w in w.items() if (b[o] - b[i]) != w}
@@ -171,46 +189,47 @@ class B(object):
      # Subject to
      #       u_n - u_1 \geq 0
      #       u_i unrestricted
-    def bb(self, x, A, C, max_b) -> int:
-        '''This function compute the function to minimize.
-            f(x) = max(C-sum(A*x))  (1)     
+    def bb(self, x, edges_adjacency_matrix, fixed_weighs, max_b) -> int:
+        '''Black Box function who compute:.
+            f(x) = max(fixed_weighs-sum(edges_adjacency_matrix*x))  (1)     
             Subject to:
-                sum(x) > max_b      (2)
-                C-sum(A*x) > 0      (3)
-
+                sum(x) > max_b                                      (2)
+                fixed_weighs-sum(edges_adjacency_matrix*x) > 0      (3)
         ''' 
 
         dim = x.get_n()
-        b = [x.get_coord(i) for i in range(dim)]
+        weighs = [x.get_coord(i) for i in range(dim)]
 
-        delta = C - np.sum(np.multiply(A,b),axis=1)
+        delta = fixed_weighs - np.sum( edges_adjacency_matrix * weighs, axis=1)
 
-        x.set_bb_output(0, max(delta))     # (1)
-        x.set_bb_output(1, sum(b) - max_b) # (2)
+        x.set_bb_output(0, max(delta))          # (1)
+        x.set_bb_output(1, sum(weighs) - max_b) # (2)
 
         for i,v in enumerate(delta,2):
-            x.set_bb_output(i,-v)          #(3)
+            x.set_bb_output(i,-v)               #(3)
  
         return 1
 
-    def constrained_adjacency_buffer(self,max_b) -> Tuple[Dict[Tuple[Edge],int], int]:
+    def constrained_edge_buffer(self,max_b) -> Tuple[Dict[Tuple[Edge],int], int]:
         '''
-        We will optimize min(max(abs(C-p))) where p are the total weigh of the graph
-        under the constrain the sum(e) < max_b
+        Optimize min(max(abs(cw-w))) where
+                cw,w are the sum of weighs of the critical path, and other paths respectively
+        under the constrain 
+                sum(b) < max_b where bs are the buffers used in the aforesaid paths
         '''
         # Initialization
         nc_path = self.non_critical_path 
-        opt_adj_buf = self.opt_adjacency_buffer 
+        opt_edg_buf = self.opt_edge_buffer 
 
-        # Edge matrix and constrain vector
-        A = np.array( [ [ e in pairs for e in opt_adj_buf ] for pairs, w in nc_path.items() ] , dtype=int) 
-        C = self.critical_weigh - np.array(list(nc_path.values()),dtype=int)
+        # Edge adjacency matrix and  fixed weighs
+        e_adj = np.array( [ [ e in pairs for e in opt_edg_buf ] for pairs, w in nc_path.items() ] , dtype=int) 
+        weighs = self.critical_weigh - np.array(list(nc_path.values()),dtype=int)
 
-        bb = partial(self.bb,max_b=max_b,A=A,C=C)
+        bb = partial(self.bb,max_b=max_b,edges_adjacency_matrix=e_adj,fixed_weighs=weighs)
 
         # Nomad parameter  
-        lb = [0] * len(opt_adj_buf) 
-        ub = list(opt_adj_buf.values())
+        lb = [0] * len(opt_edg_buf) 
+        ub = list(opt_edg_buf.values())
         x0 = lb
 
         # Each path will give us a constrain (dela >0)
@@ -224,7 +243,7 @@ class B(object):
         x_return, f_return, h_return, nb_evals, nb_iters, stopflag = PyNomad.optimize(bb,x0,lb,ub,params)
 
         # Map back to the correct name
-        l_buffer_updated = {k:int(v) for k,v in zip(opt_adj_buf,x_return)}
+        l_buffer_updated = {k:int(v) for k,v in zip(opt_edg_buf,x_return)}
         return l_buffer_updated, f_return
 
 
@@ -252,7 +271,7 @@ w = {('u1','u2'): 1,
 max_b = 100
 
 print (f'Max buffer alowed: {max_b}')
-l_buffer_updated, diff_delay = B(w).constrained_adjacency_buffer(max_b) #adjacency_buffered
+l_buffer_updated, diff_delay = Swing(w).constrained_edge_buffer(max_b) #adjacency_buffered
 print (f'list buffer: {l_buffer_updated}')
 print (f'number of buffer used: {sum(l_buffer_updated.values())}')
 print (f'max diff delay: {diff_delay}')
