@@ -28,10 +28,10 @@ if __name__ == '__main__':
         ('u7', 'u8'): 1
     }
 
-    max_b = 92
+    max_b, max_bb_eval = 18, 100
 
     print(f'Max buffer alowed: {max_b}')
-    l_buffer_updated, diff_delay = Swing(w).constrained_edge_buffer(max_b)  #adjacency_buffered
+    l_buffer_updated, diff_delay = Swing(w).constrained_edge_buffer(max_b, max_bb_eval)  #adjacency_buffered
     print(f'list buffer: {l_buffer_updated}')
     print(f'number of buffer used: {sum(l_buffer_updated.values())}')
     print(f'max diff delay: {diff_delay}')

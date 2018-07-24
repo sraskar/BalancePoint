@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import numpy as np
+import logging # Please change logging info for more information about nomad optimization
 
 from collections import defaultdict
 from itertools import chain,tee
@@ -44,8 +45,6 @@ class Swing(object):
 
     @lazy_property
     def adjacency_list_topdown(self) -> Dict[Node, List[Node]]:
-        '''
-        '''
         d = defaultdict(list)
         for i, o in self.weigh:
             d[i].append(o)
@@ -108,7 +107,7 @@ class Swing(object):
         Compute for all the path ( of the form (e1->e2),(e2->e3) )
         and the sum of the weigh from the leaf to the read
         '''
-        d = defaultdict(list)
+        d = dict()
 
         for p in self.path_node(self.leaf):
             path_edge = tuple(pairwise(p))
@@ -149,14 +148,13 @@ class Swing(object):
             A[idx, od[i]] = 1
             A[idx, od[o]] = -1
 
-        # Expant with positif contrains
-        A_pos = np.identity(n_node) * -1
+        A_pos = np.identity(n_node) * -1 # Expant with positif contrains
         return np.concatenate((A, A_pos), axis=0)
 
     @lazy_property
     def lp_constrain_vector(self):
         b = np.array([-k for k in self.weigh.values()], dtype=float)
-        b_pos = np.zeros(len(self.l_node))  # Positif contrain
+        b_pos = np.zeros(len(self.l_node))  # Positif contrains
         return np.concatenate((b, b_pos))
 
     @lazy_property
@@ -166,9 +164,10 @@ class Swing(object):
         return np.array([-1 * self.delta_degree[i] for i in self.order], dtype=float)
 
     @lazy_property
-    def lp_firing_buffered(self):
-        '''GAO algorithm, using Liner Programming formulation
-           Compute the optimal buffers need to balance the graph
+    def lp_opt_firing(self) -> Dict[Node,int]:
+        '''
+        Gao's algorithm, using Liner Programming formulation
+        Compute the optimal firing of each node for the now balenced graph
         '''
 
         from cvxopt import matrix, solvers
@@ -180,19 +179,21 @@ class Swing(object):
         solvers.options['glpk'] = {'msg_lev': 'GLP_MSG_OFF'}
         sol = solvers.lp(c, A, b, solver='glpk')
 
-        sol['x_int'] = [int(round(i)) for i in sol['x']]
-        assert all(i == f for i, f in zip(sol['x_int'], sol['x']))  # All the value are integer
-        return dict(zip(self.order, sol['x_int']))  # Assume ordered dict
+        x, x_int = sol['x'], [int(round(i)) for i in sol['x']]
+        assert all(i == f for i, f in zip(x_int, x)), 'Some none integer buffers where found'
+        return dict(zip(self.order, x_int))  # Assume ordered dict
 
     @lazy_property
     def opt_edge_buffer(self) -> Dict[Edge, int]:
-        b = self.lp_firing_buffered
-        w = self.weigh
-        return {(i, o): (b[o] - b[i]) - w for (i, o), w in w.items() if (b[o] - b[i]) != w}
+        '''
+        Needed buffer to optimally balance the graph
+        '''
+        f, w = self.lp_opt_firing, self.weigh
+        return {(i, o): (f[o] - f[i]) - w for (i, o), w in w.items() if (f[o] - f[i]) != w}
 
-    #
-    #|\/| o ._  |\/|  _.
-    #|  | | | | |  | (_| ><
+    # 
+    # |\/| o ._  |\/|  _.
+    # |  | | | | |  | (_| ><
     #
     # Miminize  max(u_n - u_1)
     # Subject to
@@ -203,7 +204,7 @@ class Swing(object):
             f(x) = max(fixed_weighs-sum(edges_adjacency_matrix*x))  (1)     
             Subject to:
                 sum(x) > max_b                                      (2)
-                fixed_weighs-sum(edges_adjacency_matrix*x) > 0      (3)
+                fixed_weighs-sum(edges_adjacency_matrix*x) >= 0     (3)
         '''
 
         dim = x.get_n()
@@ -211,32 +212,35 @@ class Swing(object):
 
         delta = fixed_weighs - np.sum(edges_adjacency_matrix * weighs, axis=1)
 
-        x.set_bb_output(0, max(delta))  # (1)
+        x.set_bb_output(0, max(delta))           # (1)
         x.set_bb_output(1, sum(weighs) - max_b)  # (2)
 
         for i, v in enumerate(delta, 2):
-            x.set_bb_output(i, -v)  #(3)
+            x.set_bb_output(i, -v)               #(3) Minus sign: \ge 0 -> \le 0 
 
         return 1
 
-    def constrained_edge_buffer(self, max_b) -> Tuple[Dict[Edge, int], int]:
+    def constrained_edge_buffer(self, max_b: int, max_bb_eval: int = 100) -> Tuple[Dict[Edge, int], int]:
         '''
-        Optimize min(max(abs(cw-w))) where
+        Optimize min(max(cw-w)) where
                 cw,w are the sum of weighs of the critical path, and other paths respectively
         under the constrain 
                 sum(b) < max_b where bs are the buffers used in the aforesaid paths
-        '''
+        
+        max_b <=0, meens no restriction on the number of buffers
 
+        Return the dictionary of buffers needed for eatch edges and the max(cw-w) value.
+        '''
         # Initialization
         opt_edg_buf = self.opt_edge_buffer
 
-        if max_b is None:
+        if max_b <= 0:
             return opt_edg_buf, 0
 
         nc_path = self.non_critical_path
 
         # Edge adjacency matrix and  fixed weighs
-        e_adj = np.array( [[e in pairs for e in opt_edg_buf] for pairs, w in nc_path.items()], dtype=int)
+        e_adj = np.array( [[e in pairs for e in opt_edg_buf] for pairs in nc_path], dtype=int)
         weighs = self.critical_weigh - np.array(list(nc_path.values()), dtype=int)
 
         bb = partial(self.bb, max_b=max_b, edges_adjacency_matrix=e_adj, fixed_weighs=weighs)
@@ -248,18 +252,22 @@ class Swing(object):
         # For now, the starting point of the minmax optimation is set arbitrary to the lower bound (no buffer)
         x0 = ub
 
-        # Each path will give us a constrain (dela >0)
         params = [
-            f'BB_OUTPUT_TYPE OBJ EB {" ".join(["EB"] * len(nc_path))}',
-            'MAX_BB_EVAL 100',  # Parameter
+            f'BB_OUTPUT_TYPE OBJ EB {" ".join(["EB"] * len(nc_path))}',  # Each path have a constrain
+            f'MAX_BB_EVAL {max_bb_eval}',
             'LOWER_BOUND * 0',  # Buffer are postif
             'BB_INPUT_TYPE * I',  # All integer
-            'DISPLAY_DEGREE 0'
+            f'DISPLAY_DEGREE {0 if logging.getLogger().getEffectiveLevel() >= 30 else 1}'
         ]
 
         import PyNomad
+        logging.info('Starting Nomad evaluation')
         x_return, f_return, h_return, nb_evals, nb_iters, stopflag = PyNomad.optimize(bb, x0, lb, ub, params)
 
-        # Map back to the correct name
-        l_buffer_updated = {k: int(v) for k, v in zip(opt_edg_buf, x_return)}
+        if nb_evals == max_bb_eval:
+            logging.warning(f'The number of maximun evalation ({max_bb_eval}) has been reached.'
+                             ' Maybe inscrease max_bb_eval threshold.')
+
+        # Map back to the name
+        l_buffer_updated = {k: int(v) for k, v in zip(opt_edg_buf, x_return) if v}
         return l_buffer_updated, f_return
