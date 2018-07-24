@@ -49,7 +49,7 @@ class Swing(object):
         d = defaultdict(list)
         for i, o in self.weigh:
             d[i].append(o)
-        return d
+        return dict(d)
 
     @lazy_property
     def adjacency_list_bottomup(self) -> Dict[Node, List[Node]]:
@@ -57,7 +57,7 @@ class Swing(object):
         for k, lv in self.adjacency_list_topdown.items():
             for v in lv:
                 d[v].append(k)
-        return d
+        return dict(d)
 
     @lazy_property
     def l_node(self) -> Set[Node]:
@@ -65,20 +65,29 @@ class Swing(object):
 
     @lazy_property
     def order(self) -> Dict[Node, int]:
-        '''Arbitrary labeling for the node'''
+        '''Arbitrary nodes labeling'''
         return {k: i for i, k in enumerate(self.l_node)}
 
     @lazy_property
     def leaf(self) -> Node:
-        '''Assume only one leaf for now'''
-        return (self.l_node - self.adjacency_list_topdown.keys()).pop()
+        '''
+        Return the leaf node. 
+        Assume only one leaf for now
+        '''
+        leafs = self.l_node - self.adjacency_list_topdown.keys()
+        if len(leafs) == 1:
+            return leafs.pop()
+        else:
+            raise NotImplementedError("Multiple leafs found. Not implemted yet")
 
     @lazy_property
     def delta_degree(self) -> Dict[Node, int]:
         '''indegree(i) - outdegree(i) for each node. '''
         in_ = self.adjacency_list_topdown
         out_ = self.adjacency_list_bottomup
-        return {n: (len(in_[n]) - len(out_[n])) for n in self.l_node}
+
+        g = lambda d,n: len(d[n]) if n in d else 0 # Handle leaf and root
+        return {n: g(in_,n) - g(out_,n) for n in self.l_node}
 
     @lru_cache(None)
     def path_node(self, cur) -> List[List[Node]]:
@@ -86,7 +95,7 @@ class Swing(object):
             Assume a unique root'''
         d = self.adjacency_list_bottomup
 
-        if d[cur]:
+        if cur in d:
             it = chain.from_iterable(self.path_node(p) for p in d[cur])
         else:
             it = iter([[]])
@@ -97,7 +106,7 @@ class Swing(object):
     def path(self) -> Dict[Tuple[Edge], int]:
         '''
         Compute for all the path ( of the form (e1->e2),(e2->e3) )
-        and the sum of th weigh  from the leaf to the read
+        and the sum of the weigh from the leaf to the read
         '''
         d = defaultdict(list)
 
@@ -152,9 +161,9 @@ class Swing(object):
 
     @lazy_property
     def lp_objective_vector(self):
+        # CVXopt can only minimazise so the multiply the objective vector by -1
         # Float is required by CVXopt
-        return np.array(
-            [-1 * self.delta_degree[i] for i in self.order], dtype=float)  # -1 <=> Minizise
+        return np.array([-1 * self.delta_degree[i] for i in self.order], dtype=float)
 
     @lazy_property
     def lp_firing_buffered(self):
@@ -217,13 +226,17 @@ class Swing(object):
         under the constrain 
                 sum(b) < max_b where bs are the buffers used in the aforesaid paths
         '''
+
         # Initialization
-        nc_path = self.non_critical_path
         opt_edg_buf = self.opt_edge_buffer
 
+        if max_b is None:
+            return opt_edg_buf, 0
+
+        nc_path = self.non_critical_path
+
         # Edge adjacency matrix and  fixed weighs
-        e_adj = np.array(
-            [[e in pairs for e in opt_edg_buf] for pairs, w in nc_path.items()], dtype=int)
+        e_adj = np.array( [[e in pairs for e in opt_edg_buf] for pairs, w in nc_path.items()], dtype=int)
         weighs = self.critical_weigh - np.array(list(nc_path.values()), dtype=int)
 
         bb = partial(self.bb, max_b=max_b, edges_adjacency_matrix=e_adj, fixed_weighs=weighs)
@@ -250,37 +263,3 @@ class Swing(object):
         # Map back to the correct name
         l_buffer_updated = {k: int(v) for k, v in zip(opt_edg_buf, x_return)}
         return l_buffer_updated, f_return
-
-
-#Gao fig 7
-w = {
-    ('u1', 'u2'): 1,
-    ('u2', 'u4'): 3,
-    ('u2', 'u3'): 4,
-    ('u3', 'u4'): 4,
-    ('u4', 'u5'): 1,
-    ('u1', 'u5'): 20,
-    ('u3', 'u5'): 5
-}
-
-#Appl fig 1
-w = {
-    ('u1', 'u2'): 1,
-    ('u1', 'u3'): 1,
-    ('u2', 'u6'): 90,
-    ('u2', 'u4'): 1,
-    ('u4', 'u6'): 80,
-    ('u6', 'u8'): 1,
-    ('u3', 'u7'): 20,
-    ('u3', 'u5'): 1,
-    ('u5', 'u7'): 1,
-    ('u7', 'u8'): 1
-}
-
-max_b = 95
-
-print(f'Max buffer alowed: {max_b}')
-l_buffer_updated, diff_delay = Swing(w).constrained_edge_buffer(max_b)  #adjacency_buffered
-print(f'list buffer: {l_buffer_updated}')
-print(f'number of buffer used: {sum(l_buffer_updated.values())}')
-print(f'max diff delay: {diff_delay}')
