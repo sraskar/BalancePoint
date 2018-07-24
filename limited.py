@@ -24,7 +24,7 @@ class Swing(object):
     '''
     This object takes as input a weighted acyclic graph and maximizes the pipelining capabilities of the graph.
 
-    Two menber may be useufull:
+    The key two menbers are:
         1- opt_edge_buffer -> Optimal buffering need to balence the graph
         2- constrained_edge_buffer(max_b) -> Optimal constrain balenced graph
 
@@ -82,7 +82,7 @@ class Swing(object):
 
 
     @lru_cache(None)
-    def path_node(self, cur) -> List[Node]:
+    def path_node(self, cur) -> List[List[Node]]:
         '''Compute all the node form cur to the root of the DAG.
             Assume a unique root'''
         d =  self.adjacency_list_bottomup
@@ -90,7 +90,7 @@ class Swing(object):
         if d[cur]:
             it =  chain.from_iterable(self.path_node(p) for p in d[cur])
         else:
-            it = [ [] ]
+            it = iter([ [] ])
 
         return [ k + [cur] for k in it ]
 
@@ -176,7 +176,7 @@ class Swing(object):
         return dict(zip(self.order,sol['x_int'])) # Assume ordered dict
 
     @lazy_property
-    def opt_edge_buffer(self) -> Dict[Tuple[str,str],int]:
+    def opt_edge_buffer(self) -> Dict[Edge,int]:
         b = self.lp_firing_buffered
         w = self.weigh
         return { (i,o): (b[o] - b[i]) - w for (i,o),w in w.items() if (b[o] - b[i]) != w}
@@ -210,7 +210,7 @@ class Swing(object):
  
         return 1
 
-    def constrained_edge_buffer(self,max_b) -> Tuple[Dict[Tuple[Edge],int], int]:
+    def constrained_edge_buffer(self,max_b) -> Tuple[Dict[Edge,int], int]:
         '''
         Optimize min(max(abs(cw-w))) where
                 cw,w are the sum of weighs of the critical path, and other paths respectively
@@ -227,11 +227,13 @@ class Swing(object):
 
         bb = partial(self.bb,max_b=max_b,edges_adjacency_matrix=e_adj,fixed_weighs=weighs)
 
-        # Nomad parameter  
-        lb = [0] * len(opt_edg_buf) 
+        # Nomad parameter 0 < buffer < optimal result
+        lb = [0] * len(opt_edg_buf)    
         ub = list(opt_edg_buf.values())
-        x0 = lb
 
+        # For now, the starting point of the minmax optimation is set arbitrary to the lower bound (no buffer)
+        x0 = ub
+        
         # Each path will give us a constrain (dela >0)
         params = [f'BB_OUTPUT_TYPE OBJ EB {" ".join(["EB"] * len(nc_path))}',
                   'MAX_BB_EVAL 100',   # Parameter
@@ -268,7 +270,7 @@ w = {('u1','u2'): 1,
      ('u5','u7'): 1,
      ('u7','u8'): 1}
 
-max_b = 100
+max_b = 95
 
 print (f'Max buffer alowed: {max_b}')
 l_buffer_updated, diff_delay = Swing(w).constrained_edge_buffer(max_b) #adjacency_buffered
