@@ -42,6 +42,7 @@ class Swing(object):
 
     def __init__(self, weigh):
         self.weigh = weigh  # Top-> bottom by default.
+        logging.info(f'Unconstrained: {len(weigh)} edges to optimize')
 
     @lazy_property
     def adjacency_list_topdown(self) -> Dict[Node, List[Node]]:
@@ -117,13 +118,16 @@ class Swing(object):
 
     @lazy_property
     def critical_weigh(self) -> int:
-        return max(self.path.values())
+        cw = max(self.path.values())
+        logging.info(f'Critical path weigh: {cw}')
+        return cw
 
     @lazy_property
     def non_critical_path(self) -> Dict[Tuple[Edge], int]:
         c = self.critical_weigh
-        return {p: w for p, w in self.path.items() if w != c}
-
+        d = {p: w for p, w in self.path.items() if w != c}
+        logging.info(f'{len(d)} paths to optimize')
+        return d
     #                        _
     # |  o ._   _   _. ._   |_) ._ _   _  ._ _. ._ _
     # |_ | | | (/_ (_| |    |   | (_) (_| | (_| | | |
@@ -189,7 +193,9 @@ class Swing(object):
         Needed buffer to optimally balance the graph
         '''
         f, w = self.lp_opt_firing, self.weigh
-        return {(i, o): (f[o] - f[i]) - w for (i, o), w in w.items() if (f[o] - f[i]) != w}
+        d =  {(i, o): (f[o] - f[i]) - w for (i, o), w in w.items() if (f[o] - f[i]) != w}
+        logging.info(f'Unconstrained: {len(d)} distinct buffers ({sum(d.values())} values in total) are needed to optimaly balence the graph')
+        return d
 
     # 
     # |\/| o ._  |\/|  _.
@@ -233,11 +239,11 @@ class Swing(object):
         '''
         # Initialization
         opt_edg_buf = self.opt_edge_buffer
-
         if max_b <= 0:
             return opt_edg_buf, 0
 
         nc_path = self.non_critical_path
+        logging.info(f'Constrained: {len(opt_edg_buf)} edges to optimize')
 
         # Edge adjacency matrix and  fixed weighs
         e_adj = np.array( [[e in pairs for e in opt_edg_buf] for pairs in nc_path], dtype=int)
@@ -250,7 +256,7 @@ class Swing(object):
         ub = list(opt_edg_buf.values())
 
         # For now, the starting point of the minmax optimation is set arbitrary to the lower bound (no buffer)
-        x0 = ub
+        x0 = ub #lb
 
         params = [
             f'BB_OUTPUT_TYPE OBJ EB {" ".join(["EB"] * len(nc_path))}',  # Each path have a constrain
@@ -261,7 +267,7 @@ class Swing(object):
         ]
 
         import PyNomad
-        logging.info('Starting Nomad evaluation')
+        logging.debug('Starting Nomad evaluation')
         x_return, f_return, h_return, nb_evals, nb_iters, stopflag = PyNomad.optimize(bb, x0, lb, ub, params)
 
         if nb_evals == max_bb_eval:
