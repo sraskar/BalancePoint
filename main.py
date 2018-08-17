@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 from balence import Swing
-#import networkx as nx
-#import matplotlib.pyplot as plt
-#from networkx.drawing.nx_agraph import write_dot
+import networkx as nx
+import matplotlib.pyplot as plt
+from networkx.drawing.nx_agraph import write_dot
 
 import random
 import logging
@@ -33,11 +33,18 @@ def generate_random_dag(n, p,seed=None):
 
     return w
 
+
+def increment_edge_weight(w,edge):
+    #print(w)
+    w[edge] += 1    
+    return w
+
+
 if __name__ == '__main__':
 
     # Weighted graph to balence
     #Gao fig 8
-    w = {
+    w_ref = {
         ('u1', 'u2'): 1,
         ('u2', 'u4'): 3,
         ('u2', 'u3'): 4,
@@ -48,27 +55,74 @@ if __name__ == '__main__':
     }
 
     ##Appl fig 1
-    #w = {
-    #    ('u1', 'u2'): 1,
-    #    ('u1', 'u3'): 1,
-    #    ('u2', 'u6'): 90,
-    #    ('u2', 'u4'): 1,
-    #    ('u4', 'u6'): 80,
-    #    ('u6', 'u8'): 1,
-    #    ('u3', 'u7'): 20,
-    #    ('u3', 'u5'): 1,
-    #    ('u5', 'u7'): 1,
-    #    ('u7', 'u8'): 1
-    #}
+    w_ref = {
+        ('u1', 'u2'): 1,
+        ('u1', 'u3'): 1,
+        ('u2', 'u6'): 90,
+        ('u2', 'u4'): 1,
+        ('u4', 'u6'): 80,
+        ('u6', 'u8'): 1,
+        ('u3', 'u7'): 20,
+        ('u3', 'u5'): 1,
+        ('u5', 'u7'): 1,
+        ('u7', 'u8'): 1
+    }
 
-    max_b, max_bb_eval, seed = 410-1, 100, 1
-    #w =generate_random_dag(200,0.001, seed)
+    w_ref = generate_random_dag(15,0.1,11) 
+    print (w_ref)
+    #del w_ref[(7,11)]
+    #del w_ref[('root',7)]
+    #w_ref[('root',11)] = 1
+    #del w_ref[(4,9)]
+    #w_ref[('root',9)] = 1
 
-    s = Swing(w) 
-    
+    #for k,v in w_ref.items():
+    #    w_ref[k] = 1
 
-    print(s.max_traffic)
-    # operation
+    w = dict(w_ref)
+
+    print (w)
+
+    while True:
+        s = Swing(w) 
+        if not s.non_critical_path:
+            print ("We converge")
+            break
+        min_path =  min(s.non_critical_path.items(), key=lambda kv: kv[1])[0]
+        set_edge_maybe_on_cp = set(min_path)
+
+        set_edge_on_cp = set()
+        for path in s.critical_paths:
+            set_edge_on_cp.update(path)
+
+        set_edge_not_on_cp = set_edge_maybe_on_cp - set_edge_on_cp
+        max_traffic_edge_not_on_cp = max(set_edge_not_on_cp, key= lambda edge: s.traffic[edge]) 
+
+        w[max_traffic_edge_not_on_cp] += 1
+
+    #d_opt_buffer = {edge: w[edge] - w_ref[edge] for edge in w}
+    d_opt_buffer = {}
+    for edge in w:
+        buf = w[edge] - w_ref[edge]
+        if buf:
+            d_opt_buffer[edge] = buf
+
+    gao = Swing(w_ref).opt_edge_buffer
+    print ("Us", sum(d_opt_buffer.values()))
+    print ("Gao", sum(gao.values()))
+
+    print ("w", w)
+    print ("Us", d_opt_buffer)
+    print ("Gao", gao)
+    #print (set_edge_not_on_cp)
+
+    # for non critical paths 
+    #     #find path with min weight 
+    #         find edge with max_traffic on those paths
+    #         increment edge weight until path weight == critical path weight 
+
+
+    #print(s.path)
     #w[('u1','u2')] = 2
 
     #s2 =Swing(w)

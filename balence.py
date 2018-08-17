@@ -56,7 +56,6 @@ class Swing(object):
         d = defaultdict(list)
         for k, lv in self.adjacency_list_topdown.items():
             for v in lv:
-                #print(k,lv,v)
                 d[v].append(k)
         return dict(d)
 
@@ -132,6 +131,13 @@ class Swing(object):
     def non_critical_path(self) -> Dict[Tuple[Edge], int]:
         c = self.critical_weigh
         d = {p: w for p, w in self.path.items() if w != c}
+        logging.info(f'{len(d)} paths to optimize')
+        return d
+
+    @lazy_property
+    def critical_paths(self) -> Dict[Tuple[Edge], int]:
+        c = self.critical_weigh
+        d = {p: w for p, w in self.path.items() if w == c}
         logging.info(f'{len(d)} paths to optimize')
         return d
     #                        _
@@ -285,7 +291,10 @@ class Swing(object):
         return l_buffer_updated, f_return
 
     @lazy_property
-    def max_traffic(self) -> List[Edge]:
+    def traffic(self) -> List[Edge]:
+        ''' Calculate the traffic passing through each edge in graph. 
+            Traffic : Number of unique paths passing though an edge.  
+        '''
         d = defaultdict(int)
         for i in self.path_edges:
             for o in i:
@@ -293,3 +302,8 @@ class Swing(object):
 
         return dict(d)
 
+    @lazy_property
+    def max_traffic_edge(self) -> Edge:
+        ''' Returns the edge with maximum traffic ''' 
+        list_key_values = self.traffic.items()
+        return max(list_key_values, key=lambda kv: kv[1])[0] #, key=lambda kv: kv[1])[0]

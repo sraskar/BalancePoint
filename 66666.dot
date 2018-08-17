@@ -1,0 +1,24 @@
+strict digraph "" {
+	0 -> 5	 [weight=15];
+	0 -> 13	 [weight=18];
+	5 -> leaf	 [weight=15];
+	13 -> leaf	 [weight=15];
+	2 -> 8	 [weight=17];
+	2 -> 14	 [weight=19];
+	8 -> 9	 [weight=7];
+	8 -> 10	 [weight=6];
+	14 -> leaf	 [weight=17];
+	3 -> 6	 [weight=16];
+	6 -> 9	 [weight=20];
+	6 -> 10	 [weight=6];
+	4 -> 9	 [weight=4];
+	9 -> leaf	 [weight=15];
+	10 -> leaf	 [weight=10];
+	7 -> 11	 [weight=5];
+	11 -> leaf	 [weight=3];
+	root -> 0	 [weight=18];
+	root -> 2	 [weight=2];
+	root -> 3	 [weight=20];
+	root -> 4	 [weight=13];
+	root -> 7	 [weight=15];
+}
