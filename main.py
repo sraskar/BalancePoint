@@ -7,7 +7,7 @@ from networkx.drawing.nx_agraph import write_dot
 import random
 import logging
 
-logging.getLogger().setLevel(logging.DEBUG)
+logging.getLogger().setLevel(logging.ERROR)
 
 def generate_random_dag(n, p,seed=None):
     random_graph = nx.fast_gnp_random_graph(n, p, directed=True, seed=seed)
@@ -15,13 +15,32 @@ def generate_random_dag(n, p,seed=None):
     # Merge all the leaf
     G.add_edges_from([('root',n) for n,d in G.in_degree() if d==0])
     G.add_edges_from([(n,'leaf') for n,d in G.out_degree() if d==0])
- 
+
     assert (nx.is_directed_acyclic_graph(G))
 
     random.seed(seed)
     for u,v,d in G.edges(data=True):
             d['weight'] = random.randint(1,20)
 
+    G.remove_edge(7,11)
+    G.remove_edge('root',7)
+    G.remove_edge(11,'leaf')
+    G.remove_edge(4,9)
+    G.remove_edge('root',4)
+    G.remove_edge(0,5)
+    G.remove_edge(5,'leaf')
+    G.remove_edge(0,13)
+    G.remove_edge(13,'leaf')
+    G.remove_edge('root',0)
+
+    G.remove_edge(3,6)
+    G.add_edge('root',6, weight=12)
+
+
+
+
+    for n in [0,5,13,4,7,11,3]:
+        G.remove_node(n)
 
     pos=nx.spring_layout(G)
     labels = nx.get_edge_attributes(G,'weight')
@@ -33,11 +52,6 @@ def generate_random_dag(n, p,seed=None):
 
     return w
 
-
-def increment_edge_weight(w,edge):
-    #print(w)
-    w[edge] += 1    
-    return w
 
 
 if __name__ == '__main__':
@@ -55,50 +69,51 @@ if __name__ == '__main__':
     }
 
     ##Appl fig 1
-    w_ref = {
-        ('u1', 'u2'): 1,
-        ('u1', 'u3'): 1,
-        ('u2', 'u6'): 90,
-        ('u2', 'u4'): 1,
-        ('u4', 'u6'): 80,
-        ('u6', 'u8'): 1,
-        ('u3', 'u7'): 20,
-        ('u3', 'u5'): 1,
-        ('u5', 'u7'): 1,
-        ('u7', 'u8'): 1
-    }
+    #w_ref = {
+    #    ('u1', 'u2'): 1,
+    #    ('u1', 'u3'): 1,
+    #    ('u2', 'u6'): 90,
+    #    ('u2', 'u4'): 1,
+    #    ('u4', 'u6'): 80,
+    #    ('u6', 'u8'): 1,
+    #    ('u3', 'u7'): 20,
+    #    ('u3', 'u5'): 1,
+    #    ('u5', 'u7'): 1,
+    #    ('u7', 'u8'): 1
+    #}
 
     w_ref = generate_random_dag(15,0.1,11) 
     print (w_ref)
-    #del w_ref[(7,11)]
-    #del w_ref[('root',7)]
-    #w_ref[('root',11)] = 1
-    #del w_ref[(4,9)]
-    #w_ref[('root',9)] = 1
-
-    #for k,v in w_ref.items():
-    #    w_ref[k] = 1
 
     w = dict(w_ref)
-
-    print (w)
 
     while True:
         s = Swing(w) 
         if not s.non_critical_path:
-            print ("We converge")
+            print ("Graph Balanced!")
             break
         min_path =  min(s.non_critical_path.items(), key=lambda kv: kv[1])[0]
         set_edge_maybe_on_cp = set(min_path)
-
+        print (min_path) 
         set_edge_on_cp = set()
         for path in s.critical_paths:
             set_edge_on_cp.update(path)
 
         set_edge_not_on_cp = set_edge_maybe_on_cp - set_edge_on_cp
-        max_traffic_edge_not_on_cp = max(set_edge_not_on_cp, key= lambda edge: s.traffic[edge]) 
 
+        from collections import defaultdict
+        d_order_trafic = defaultdict(list)
+        for edge in set_edge_not_on_cp:
+            traffic = s.traffic[edge]
+            d_order_trafic[traffic] += [edge]
+
+        max_traffic = max(d_order_trafic)
+        max_traffic_edges_not_on_cp = d_order_trafic[max_traffic]
+
+        # Maxium ordering (node at the botom of the graph. Does not seem usefull)
+        max_traffic_edge_not_on_cp = max(max_traffic_edges_not_o n_cp,key= lambda k: s.ordering(k))
         w[max_traffic_edge_not_on_cp] += 1
+        print (max_traffic_edge_not_on_cp, w[max_traffic_edge_not_on_cp])
 
     #d_opt_buffer = {edge: w[edge] - w_ref[edge] for edge in w}
     d_opt_buffer = {}
@@ -108,25 +123,17 @@ if __name__ == '__main__':
             d_opt_buffer[edge] = buf
 
     gao = Swing(w_ref).opt_edge_buffer
-    print ("Us", sum(d_opt_buffer.values()))
-    print ("Gao", sum(gao.values()))
+
+
+    print("Traffic : ",Swing(w_ref).traffic)
+    print ("Us  Buffers : ", sum(d_opt_buffer.values()))
+    print ("Gao Buffers : ", sum(gao.values()))
 
     print ("w", w)
-    print ("Us", d_opt_buffer)
-    print ("Gao", gao)
+    print ("Us  Bal : ", d_opt_buffer)
+    print ("Gao Bal : ", gao)
     #print (set_edge_not_on_cp)
 
-    # for non critical paths 
-    #     #find path with min weight 
-    #         find edge with max_traffic on those paths
-    #         increment edge weight until path weight == critical path weight 
-
-
-    #print(s.path)
-    #w[('u1','u2')] = 2
-
-    #s2 =Swing(w)
-    # optarion
 
     #print(s.adjacency_list_topdown)
     #print(f'Max buffer alowed: {max_b}')

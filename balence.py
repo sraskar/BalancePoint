@@ -81,6 +81,12 @@ class Swing(object):
         else:
             raise NotImplementedError("Multiple leafs found. Not implemted yet")
 
+    @lru_cache(None)
+    def ordering(self,node):
+        if node not in self.adjacency_list_bottomup:
+            return 0
+        return max( self.ordering(parent) for parent in self.adjacency_list_bottomup[node]) + 1
+
     @lazy_property
     def delta_degree(self) -> Dict[Node, int]:
         '''indegree(i) - outdegree(i) for each node. '''
