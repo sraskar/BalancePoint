@@ -7,48 +7,54 @@ from networkx.drawing.nx_agraph import write_dot
 import random
 import logging
 
+import sys,os
+
 logging.getLogger().setLevel(logging.ERROR)
 
 def generate_random_dag(n, p,seed=None):
     random_graph = nx.fast_gnp_random_graph(n, p, directed=True, seed=seed)
-    G = nx.DiGraph( [(u, v) for (u, v) in random_graph.edges() if u < v])
+    G = nx.DiGraph( [(u, v) for (u, v) in random_graph.edges() if u < v and (u>2 and v>2)])
     # Merge all the leaf
-    G.add_edges_from([('root',n) for n,d in G.in_degree() if d==0])
-    G.add_edges_from([(n,'leaf') for n,d in G.out_degree() if d==0])
+    root=2
+    G.add_edges_from([(root,n) for n,d in G.in_degree() if d==0])
+    #leaf=G.number_of_nodes()+1
+    leaf=max(G.nodes)
+    print("#leaf",leaf)
+    G.add_edges_from([(n,leaf+1) for n,d in G.out_degree() if d==0])
 
     assert (nx.is_directed_acyclic_graph(G))
 
     random.seed(seed)
     for u,v,d in G.edges(data=True):
-            d['weight'] = random.randint(1,20)
+            d['label'] = random.randint(1,20)
 
-    G.remove_edge(7,11)
-    G.remove_edge('root',7)
-    G.remove_edge(11,'leaf')
-    G.remove_edge(4,9)
-    G.remove_edge('root',4)
-    G.remove_edge(0,5)
-    G.remove_edge(5,'leaf')
-    G.remove_edge(0,13)
-    G.remove_edge(13,'leaf')
-    G.remove_edge('root',0)
+    # G.remove_edge(7,11)
+    # G.remove_edge('root',7)
+    # G.remove_edge(11,'leaf')
+    # G.remove_edge(4,9)
+    # G.remove_edge('root',4)
+    # G.remove_edge(0,5)
+    # G.remove_edge(5,'leaf')
+    # G.remove_edge(0,13)
+    # G.remove_edge(13,'leaf')
+    # G.remove_edge('root',0)
 
-    G.remove_edge(3,6)
-    G.add_edge('root',6, weight=12)
-
-
+    # G.remove_edge(3,6)
+    # G.add_edge('root',6, weight=12)
 
 
-    for n in [0,5,13,4,7,11,3]:
-        G.remove_node(n)
+
+
+    # for n in [0,5,13,4,7,11,3]:
+    #     G.remove_node(n)
 
     pos=nx.spring_layout(G)
-    labels = nx.get_edge_attributes(G,'weight')
+    labels = nx.get_edge_attributes(G,'label')
     nx.draw_networkx_edge_labels(G,pos,edge_labels=labels)
     
     write_dot(G,'66666.dot')
     
-    w = { tuple([u,v]): d['weight'] for u,v,d in G.edges(data=True)}
+    w = { tuple([u,v]): d['label'] for u,v,d in G.edges(data=True)}
 
     return w
 
@@ -111,7 +117,7 @@ if __name__ == '__main__':
         max_traffic_edges_not_on_cp = d_order_trafic[max_traffic]
 
         # Maxium ordering (node at the botom of the graph. Does not seem usefull)
-        max_traffic_edge_not_on_cp = max(max_traffic_edges_not_o n_cp,key= lambda k: s.ordering(k))
+        max_traffic_edge_not_on_cp = max(max_traffic_edges_not_on_cp,key= lambda k: s.ordering(k))
         w[max_traffic_edge_not_on_cp] += 1
         print (max_traffic_edge_not_on_cp, w[max_traffic_edge_not_on_cp])
 
@@ -132,6 +138,13 @@ if __name__ == '__main__':
     print ("w", w)
     print ("Us  Bal : ", d_opt_buffer)
     print ("Gao Bal : ", gao)
+
+    print("Calling Simulator : ")
+    os.system("./Simulator 3 66666.dot")
+
+
+
+
     #print (set_edge_not_on_cp)
 
 

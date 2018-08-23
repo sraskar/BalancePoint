@@ -1,13 +1,16 @@
 strict digraph "" {
-	2 -> 8	 [weight=17];
-	2 -> 14	 [weight=19];
-	8 -> 9	 [weight=7];
-	8 -> 10	 [weight=6];
-	14 -> leaf	 [weight=17];
-	6 -> 9	 [weight=20];
-	6 -> 10	 [weight=6];
-	9 -> leaf	 [weight=15];
-	10 -> leaf	 [weight=10];
-	root -> 2	 [weight=2];
-	root -> 6	 [weight=12];
+	3 -> 6	 [label=15];
+	6 -> 9	 [label=18];
+	6 -> 10	 [label=15];
+	4 -> 9	 [label=15];
+	9 -> 12	 [label=17];
+	10 -> 12	 [label=19];
+	7 -> 11	 [label=7];
+	11 -> 12	 [label=6];
+	8 -> 9	 [label=17];
+	8 -> 10	 [label=16];
+	2 -> 3	 [label=20];
+	2 -> 4	 [label=6];
+	2 -> 7	 [label=4];
+	2 -> 8	 [label=15];
 }
