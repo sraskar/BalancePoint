@@ -60,6 +60,13 @@ class Swing(object):
         return dict(d)
 
     @lazy_property
+    def l_edges(self) -> List[Edge]:
+        d = []
+        for i, o in self.weigh:
+            d.append((i,o))
+        return d
+
+    @lazy_property
     def l_node(self) -> Set[Node]:
         ''' list of nodes'''
         return self.adjacency_list_topdown.keys() | self.adjacency_list_bottomup.keys()
